@@ -1,26 +1,55 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Colors */
+  --color-background: #000000;
+  --color-card: #111111;
+  --color-foreground: #ffffff;
+  --color-muted: #A0A0A0;
+  --color-border: #222222;
+  --color-overlay: rgba(0,0,0,0.8);
+  
+  /* Status Colors (Softened) */
+  --color-status-completed: #4ade80; /* Softer Green */
+  --color-status-completed-bg: rgba(74, 222, 128, 0.1);
+  --color-status-late: #60a5fa; /* Softer Blue */
+  --color-status-late-bg: rgba(96, 165, 250, 0.1);
+  --color-status-partial: #facc15; /* Softer Yellow */
+  --color-status-partial-bg: rgba(250, 204, 21, 0.1);
+  --color-status-missed: #f87171; /* Softer Red */
+  --color-status-missed-bg: rgba(248, 113, 113, 0.1);
+  --color-status-pending: #4b5563; /* Neutral Gray */
+  
+  /* Typography */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  
+  /* Radiuses */
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --background: #000000;
+  --foreground: #ffffff;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Mobile App Constraints */
+.mobile-container {
+  max-width: 430px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  position: relative;
+  background-color: var(--background);
+  overflow-x: hidden;
+  padding-bottom: 80px; /* Space for bottom nav */
 }

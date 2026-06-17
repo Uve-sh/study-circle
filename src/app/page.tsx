@@ -1,65 +1,79 @@
-import Image from "next/image";
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import HomeClient from './HomeClient'
 
-export default function Home() {
+export default async function Home() {
+  const supabase = await createClient()
+
+  // Get authenticated user
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/auth/login')
+
+  const today = new Date().toISOString().split('T')[0]
+
+  // Fetch user profile
+  const { data: profile } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', user.id)
+    .single()
+
+  // Fetch session templates ordered correctly
+  const { data: templates } = await supabase
+    .from('session_templates')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('order_index', { ascending: true })
+
+  // If no templates exist yet, seed default ones for this user
+  let finalTemplates = templates ?? []
+  if (finalTemplates.length === 0) {
+    const defaults = [
+      { user_id: user.id, name: 'Session 1', start_time: '07:00:00', duration_minutes: 60, order_index: 0 },
+      { user_id: user.id, name: 'Session 2', start_time: '11:00:00', duration_minutes: 90, order_index: 1 },
+      { user_id: user.id, name: 'Session 3', start_time: '16:00:00', duration_minutes: 120, order_index: 2 },
+      { user_id: user.id, name: 'Session 4', start_time: '20:00:00', duration_minutes: 60, order_index: 3 },
+    ]
+    const { data: seeded } = await supabase
+      .from('session_templates')
+      .insert(defaults)
+      .select()
+    finalTemplates = seeded ?? []
+  }
+
+  // Upsert today's logs (creates pending logs if none exist)
+  if (finalTemplates.length > 0) {
+    await supabase.from('session_logs').upsert(
+      finalTemplates.map(t => ({
+        template_id: t.id,
+        user_id: user.id,
+        date: today,
+        status: 'pending' as const,
+      })),
+      { onConflict: 'template_id,user_id,date', ignoreDuplicates: true }
+    )
+  }
+
+  // Fetch today's logs
+  const { data: logs } = await supabase
+    .from('session_logs')
+    .select('*')
+    .eq('user_id', user.id)
+    .eq('date', today)
+
+  // Calculate streak server-side
+  const { data: streakData } = await supabase
+    .rpc('calculate_streak', { p_user_id: user.id })
+  const currentStreak = (streakData as number) ?? 0
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
+    <HomeClient
+      profile={profile ?? { id: user.id, name: user.email?.split('@')[0] ?? 'Friend', avatar_url: null, created_at: new Date().toISOString() }}
+      templates={finalTemplates}
+      initialLogs={logs ?? []}
+      currentStreak={currentStreak}
+      userId={user.id}
+      today={today}
+    />
+  )
 }
