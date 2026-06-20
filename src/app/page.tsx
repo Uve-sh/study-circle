@@ -11,22 +11,19 @@ export default async function Home() {
 
   const today = new Date().toISOString().split('T')[0]
 
-  // Fetch user profile
-  const { data: profile } = await supabase
-    .from('users')
-    .select('*')
-    .eq('id', user.id)
-    .single()
+  // Parallel fetch: profile, templates, today's logs, streak — 1 round-trip instead of 5
+  const [profileRes, templatesRes, logsRes, streakRes] = await Promise.all([
+    supabase.from('users').select('*').eq('id', user.id).single(),
+    supabase.from('session_templates').select('*').eq('user_id', user.id).order('order_index', { ascending: true }),
+    supabase.from('session_logs').select('*').eq('user_id', user.id).eq('date', today),
+    supabase.rpc('calculate_streak', { p_user_id: user.id }),
+  ])
 
-  // Fetch session templates ordered correctly
-  const { data: templates } = await supabase
-    .from('session_templates')
-    .select('*')
-    .eq('user_id', user.id)
-    .order('order_index', { ascending: true })
+  let finalTemplates = templatesRes.data ?? []
+  let logs = logsRes.data ?? []
+  const currentStreak = (streakRes.data as number) ?? 0
 
-  // If no templates exist yet, seed default ones for this user
-  let finalTemplates = templates ?? []
+  // Seed default templates only for brand-new users (rare path)
   if (finalTemplates.length === 0) {
     const defaults = [
       { user_id: user.id, name: 'Session 1', start_time: '07:00:00', duration_minutes: 60, order_index: 0 },
@@ -41,8 +38,8 @@ export default async function Home() {
     finalTemplates = seeded ?? []
   }
 
-  // Upsert today's logs (creates pending logs if none exist)
-  if (finalTemplates.length > 0) {
+  // Only upsert logs when they're actually missing (not on every page load)
+  if (finalTemplates.length > 0 && logs.length < finalTemplates.length) {
     await supabase.from('session_logs').upsert(
       finalTemplates.map(t => ({
         template_id: t.id,
@@ -52,25 +49,20 @@ export default async function Home() {
       })),
       { onConflict: 'template_id,user_id,date', ignoreDuplicates: true }
     )
+    // Re-fetch logs after upsert
+    const { data: freshLogs } = await supabase
+      .from('session_logs')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('date', today)
+    logs = freshLogs ?? logs
   }
-
-  // Fetch today's logs
-  const { data: logs } = await supabase
-    .from('session_logs')
-    .select('*')
-    .eq('user_id', user.id)
-    .eq('date', today)
-
-  // Calculate streak server-side
-  const { data: streakData } = await supabase
-    .rpc('calculate_streak', { p_user_id: user.id })
-  const currentStreak = (streakData as number) ?? 0
 
   return (
     <HomeClient
-      profile={profile ?? { id: user.id, name: user.email?.split('@')[0] ?? 'Friend', avatar_url: null, created_at: new Date().toISOString() }}
+      profile={profileRes.data ?? { id: user.id, name: user.email?.split('@')[0] ?? 'Friend', avatar_url: null, created_at: new Date().toISOString() }}
       templates={finalTemplates}
-      initialLogs={logs ?? []}
+      initialLogs={logs}
       currentStreak={currentStreak}
       userId={user.id}
       today={today}

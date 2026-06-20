@@ -25,6 +25,7 @@ export default function BottomNavigation() {
           <Link 
             key={item.href} 
             href={item.href}
+            prefetch={true}
             className="flex flex-col items-center justify-center w-full h-full gap-1"
           >
             <Icon 
