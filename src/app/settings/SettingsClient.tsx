@@ -33,7 +33,7 @@ export default function SettingsClient({
     setSaving(true)
     const { error } = await supabase
       .from('user_settings')
-      .update({ [key]: value })
+      .update({ [key]: value } as any)
       .eq('user_id', userId)
       
     setSaving(false)

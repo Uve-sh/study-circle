@@ -172,7 +172,7 @@ export default function FocusTimer({ userId }: { userId: string | null }) {
     if (timer.template_id) {
       const today = new Date().toISOString().split('T')[0];
       
-      let statusUpdate = 'partial';
+      let statusUpdate: 'partial' | 'completed' = 'partial';
       if (timer.duration_minutes && minutesCompleted >= timer.duration_minutes * 0.9) {
         statusUpdate = 'completed';
       }
