@@ -43,10 +43,18 @@ export default async function RootLayout({
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  let theme = 'dark';
+  if (user) {
+    const { data: settings } = await supabase.from('user_settings').select('theme').eq('user_id', user.id).single();
+    if (settings?.theme) {
+      theme = settings.theme;
+    }
+  }
+
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className={theme}>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#000000] text-white`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <div className="mobile-container">
           <main className="min-h-full pb-20">

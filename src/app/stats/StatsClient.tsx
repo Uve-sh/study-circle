@@ -61,7 +61,7 @@ export default function StatsClient({ currentStreak, logs, totalDone, weeklyHour
   const calendarDays = Array.from({ length: 30 }, (_, i) => {
     const d = new Date()
     d.setDate(d.getDate() - (29 - i))
-    const dateStr = d.toISOString().split('T')[0]
+    const dateStr = d.toLocaleDateString('en-CA')
     return { dateStr, dayLogs: logsByDate[dateStr] ?? [], label: d.getDate().toString() }
   })
 

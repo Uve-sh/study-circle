@@ -107,7 +107,7 @@ export interface Database {
       session_logs: {
         Row: {
           id: string
-          template_id: string
+          template_id: string | null
           user_id: string
           date: string
           status: SessionStatus
@@ -118,7 +118,7 @@ export interface Database {
         }
         Insert: {
           id?: string
-          template_id: string
+          template_id?: string | null
           user_id: string
           date: string
           status?: SessionStatus
@@ -129,7 +129,7 @@ export interface Database {
         }
         Update: {
           id?: string
-          template_id?: string
+          template_id?: string | null
           user_id?: string
           date?: string
           status?: SessionStatus

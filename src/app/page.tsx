@@ -38,25 +38,9 @@ export default async function Home() {
     finalTemplates = seeded ?? []
   }
 
-  // Only upsert logs when they're actually missing (not on every page load)
-  if (finalTemplates.length > 0 && logs.length < finalTemplates.length) {
-    await supabase.from('session_logs').upsert(
-      finalTemplates.map(t => ({
-        template_id: t.id,
-        user_id: user.id,
-        date: today,
-        status: 'pending' as const,
-      })),
-      { onConflict: 'template_id,user_id,date', ignoreDuplicates: true }
-    )
-    // Re-fetch logs after upsert
-    const { data: freshLogs } = await supabase
-      .from('session_logs')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('date', today)
-    logs = freshLogs ?? logs
-  }
+  // Removed UTC pending log insertions. 
+  // HomeClient will now dynamically render scheduled sessions as pending 
+  // without polluting the database with timezone-conflicting dummy records.
 
   return (
     <HomeClient

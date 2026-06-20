@@ -35,6 +35,16 @@
   --foreground: #ffffff;
 }
 
+.light {
+  --background: #ffffff;
+  --foreground: #000000;
+  --color-background: #ffffff;
+  --color-card: #f9f9f9;
+  --color-foreground: #000000;
+  --color-muted: #6b7280;
+  --color-border: #e5e7eb;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

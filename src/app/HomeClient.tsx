@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Flame, CheckCircle2, CircleDashed, Clock, XCircle, AlertCircle, LogOut } from 'lucide-react'
+import { Flame, CheckCircle2, CircleDashed, Clock, XCircle, AlertCircle, LogOut, Trash2 } from 'lucide-react'
 import { analytics } from '@/lib/analytics'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -22,8 +22,10 @@ interface Props {
 
 export default function HomeClient({ profile, templates, initialLogs, currentStreak, userId, today }: Props) {
   const router = useRouter()
+  // Use local browser date for display and log generation to prevent timezone overlap
+  const localDateStr = new Date().toLocaleDateString('en-CA')
   const [logs, setLogs] = useState<Log[]>(initialLogs)
-  const [selectedLog, setSelectedLog] = useState<Log | null>(null)
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
   const [isPending, startTransition] = useTransition()
   const supabase = createClient()
 
@@ -41,30 +43,75 @@ export default function HomeClient({ profile, templates, initialLogs, currentStr
   const [editName, setEditName] = useState('')
   const [editDuration, setEditDuration] = useState('')
 
-  const openSessionModal = (template: Template, log?: Log) => {
-    setSelectedLog(log || null)
+  const getLogForTemplate = (templateId: string) => {
+    return logs.find(l => l.template_id === templateId)
+  }
+
+  const openSessionModal = (template: Template) => {
+    setSelectedTemplate(template)
+    const log = getLogForTemplate(template.id)
     setEditName(template.name)
     setEditDuration(template.duration_minutes.toString())
     setNotes(log?.notes || '')
     setIsEditing(false)
   }
 
-  const handleStatusUpdate = async (logId: string, status: SessionStatus) => {
-    setLogs(prev => prev.map(l => l.id === logId ? { ...l, status, notes } : l))
-    setSelectedLog(null)
-    analytics.track(`session_${status}` as any, { logId, userId })
+  const handleStatusUpdate = async (templateId: string, status: SessionStatus) => {
+    // Optimistically update
+    const existingLog = getLogForTemplate(templateId)
+    const newLog: Log = existingLog 
+      ? { ...existingLog, status, notes, updated_at: new Date().toISOString() }
+      : { 
+          id: 'temp-' + templateId, 
+          template_id: templateId, 
+          user_id: userId, 
+          date: localDateStr, 
+          status, 
+          notes, 
+          actual_minutes_completed: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+
+    setLogs(prev => {
+      const idx = prev.findIndex(l => l.template_id === templateId)
+      if (idx >= 0) {
+        const copy = [...prev]
+        copy[idx] = newLog
+        return copy
+      }
+      return [...prev, newLog]
+    })
+    
+    setSelectedTemplate(null)
+    analytics.track(`session_${status}` as any, { templateId, userId })
 
     const { error } = await supabase
       .from('session_logs')
-      .update({ status, notes, updated_at: new Date().toISOString() })
-      .eq('id', logId)
+      .upsert({ 
+        template_id: templateId,
+        user_id: userId,
+        date: localDateStr,
+        status, 
+        notes,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'template_id,user_id,date' })
 
     if (!error) startTransition(() => router.refresh())
   }
 
-  const handleSaveNotes = async (logId: string) => {
-    setLogs(prev => prev.map(l => l.id === logId ? { ...l, notes } : l))
-    await supabase.from('session_logs').update({ notes }).eq('id', logId)
+  const handleSaveNotes = async (templateId: string) => {
+    const existingLog = getLogForTemplate(templateId)
+    if (existingLog) {
+      setLogs(prev => prev.map(l => l.template_id === templateId ? { ...l, notes } : l))
+      await supabase.from('session_logs').upsert({ 
+        id: existingLog.id,
+        template_id: templateId,
+        user_id: userId,
+        date: localDateStr,
+        notes 
+      }, { onConflict: 'template_id,user_id,date' })
+    }
   }
 
   const handleStartTimer = async (template: Template) => {
@@ -76,8 +123,8 @@ export default function HomeClient({ profile, templates, initialLogs, currentStr
       accumulated_seconds: 0,
       mode: 'countdown',
       duration_minutes: template.duration_minutes
-    })
-    setSelectedLog(null)
+    }, { onConflict: 'user_id' })
+    setSelectedTemplate(null)
   }
 
   const handleSaveEdit = async (templateId: string) => {
@@ -93,7 +140,7 @@ export default function HomeClient({ profile, templates, initialLogs, currentStr
   const handleDelete = async (templateId: string) => {
     if (!confirm('Delete this session?')) return;
     await supabase.from('session_templates').delete().eq('id', templateId)
-    setSelectedLog(null)
+    setSelectedTemplate(null)
     startTransition(() => router.refresh())
   }
 
@@ -122,8 +169,85 @@ export default function HomeClient({ profile, templates, initialLogs, currentStr
     }
   }
 
+  // Extracted Swipeable component for native mobile feel
+  const SwipeableSessionCard = ({ template, status, onClick, onDelete }: { template: Template, status: SessionStatus, onClick: () => void, onDelete: () => void }) => {
+    const [startX, setStartX] = useState<number | null>(null)
+    const [offsetX, setOffsetX] = useState(0)
+    const [showDelete, setShowDelete] = useState(false)
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+      setStartX(e.touches[0].clientX)
+    }
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+      if (startX === null) return
+      const currentX = e.touches[0].clientX
+      const diff = currentX - startX
+      
+      // Moving left (swiping open)
+      if (diff < 0 && !showDelete) {
+        setOffsetX(Math.max(diff, -100))
+      } 
+      // Moving right (swiping closed)
+      else if (diff > 0 && showDelete) {
+        setOffsetX(Math.min(-80 + diff, 0))
+      }
+    }
+
+    const handleTouchEnd = () => {
+      setStartX(null)
+      if (offsetX < -40) {
+        setOffsetX(-80)
+        setShowDelete(true)
+      } else {
+        setOffsetX(0)
+        setShowDelete(false)
+      }
+    }
+
+    const handleClick = () => {
+      if (showDelete) {
+        setOffsetX(0)
+        setShowDelete(false)
+      } else {
+        onClick()
+      }
+    }
+
+    return (
+      <div className="relative w-full overflow-hidden rounded-2xl touch-pan-y">
+        {/* Hidden Background Action */}
+        <div 
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          className="absolute inset-y-0 right-0 w-24 bg-status-missed flex items-center justify-end pr-6 rounded-2xl shadow-inner cursor-pointer"
+        >
+          <Trash2 className="text-black" size={24} />
+        </div>
+
+        {/* Foreground Draggable Card */}
+        <div
+          onClick={handleClick}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          style={{ transform: `translateX(${offsetX}px)` }}
+          className={`flex items-center justify-between p-5 rounded-2xl border transition-transform duration-200 cursor-pointer active:scale-[0.98] ${getStatusColorClass(status)} relative z-10 bg-card`}
+        >
+          <div className="flex flex-col items-start text-left">
+            <span className="text-xl font-semibold mb-1">{template.name}</span>
+            <span className="text-2xl font-bold text-foreground mb-1">{template.duration_minutes}m</span>
+            <span className="text-muted text-sm font-medium">{formatTime(template.start_time)}</span>
+          </div>
+          <div className="flex items-center justify-center bg-black/40 p-3 rounded-full">
+            {getStatusIcon(status)}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="p-4 pt-8">
+    <div className="p-4 pt-8 pb-32">
       {/* Header */}
       <div className="flex justify-between items-center mb-8">
         <button className="flex items-center gap-2 bg-card px-4 py-2 rounded-full border border-border">
@@ -181,33 +305,26 @@ export default function HomeClient({ profile, templates, initialLogs, currentStr
       {/* Sessions Grid */}
       <div className="flex flex-col gap-4">
         {templates.map(template => {
-          const log = logs.find(l => l.template_id === template.id)
+          const log = getLogForTemplate(template.id)
           const status = log?.status ?? 'pending'
 
           return (
-            <button
+            <SwipeableSessionCard 
               key={template.id}
-              onClick={() => openSessionModal(template, log)}
-              className={`flex items-center justify-between p-5 rounded-2xl border transition-all duration-200 active:scale-[0.98] ${getStatusColorClass(status)}`}
-            >
-              <div className="flex flex-col items-start text-left">
-                <span className="text-xl font-semibold mb-1">{template.name}</span>
-                <span className="text-2xl font-bold text-foreground mb-1">{template.duration_minutes}m</span>
-                <span className="text-muted text-sm font-medium">{formatTime(template.start_time)}</span>
-              </div>
-              <div className="flex items-center justify-center bg-black/40 p-3 rounded-full">
-                {getStatusIcon(status)}
-              </div>
-            </button>
+              template={template}
+              status={status}
+              onClick={() => openSessionModal(template)}
+              onDelete={() => handleDelete(template.id)}
+            />
           )
         })}
       </div>
 
       {/* Session Details Modal */}
-      {selectedLog && (
+      {selectedTemplate && (
         <div
           className="fixed inset-0 z-[100] bg-black/80 flex items-end justify-center"
-          onClick={() => setSelectedLog(null)}
+          onClick={() => setSelectedTemplate(null)}
         >
           <div
             className="bg-card w-full max-w-[430px] rounded-t-[32px] p-6 border-t border-border flex flex-col max-h-[90vh] overflow-y-auto"
@@ -233,21 +350,21 @@ export default function HomeClient({ profile, templates, initialLogs, currentStr
                     className="w-full bg-black border border-border rounded-xl p-3 focus:border-white/40 outline-none"
                     placeholder="Duration (min)"
                   />
-                  <button onClick={() => handleSaveEdit(selectedLog.template_id)} className="bg-white text-black px-4 rounded-xl font-bold">Save</button>
+                  <button onClick={() => handleSaveEdit(selectedTemplate.id)} className="bg-white text-black px-4 rounded-xl font-bold">Save</button>
                   <button onClick={() => setIsEditing(false)} className="bg-border px-4 rounded-xl font-bold">Cancel</button>
                 </div>
               </div>
             ) : (
               <div className="flex justify-between items-start mb-6">
                 <div>
-                  <h3 className="text-2xl font-bold mb-1">{templates.find(t => t.id === selectedLog.template_id)?.name}</h3>
+                  <h3 className="text-2xl font-bold mb-1">{selectedTemplate.name}</h3>
                   <p className="text-muted text-sm font-medium">
-                    {templates.find(t => t.id === selectedLog.template_id)?.duration_minutes} minutes
+                    {selectedTemplate.duration_minutes} minutes
                   </p>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => setIsEditing(true)} className="p-2 bg-black/40 rounded-full text-muted hover:text-white">Edit</button>
-                  <button onClick={() => handleDelete(selectedLog.template_id)} className="p-2 bg-black/40 rounded-full text-muted hover:text-status-missed">Delete</button>
+                  <button onClick={() => handleDelete(selectedTemplate.id)} className="p-2 bg-black/40 rounded-full text-muted hover:text-status-missed">Delete</button>
                 </div>
               </div>
             )}
@@ -258,7 +375,7 @@ export default function HomeClient({ profile, templates, initialLogs, currentStr
               <textarea
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
-                onBlur={() => handleSaveNotes(selectedLog.id)}
+                onBlur={() => handleSaveNotes(selectedTemplate.id)}
                 placeholder="What did you focus on?"
                 className="w-full bg-black border border-border rounded-xl p-3 text-sm min-h-[80px] focus:outline-none focus:border-white/40 transition-colors resize-none"
               />
@@ -267,7 +384,7 @@ export default function HomeClient({ profile, templates, initialLogs, currentStr
             {/* Actions */}
             <div className="flex flex-col gap-3">
               <button
-                onClick={() => handleStartTimer(templates.find(t => t.id === selectedLog.template_id)!)}
+                onClick={() => handleStartTimer(selectedTemplate)}
                 className="w-full py-4 bg-white text-black font-bold text-lg rounded-2xl flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.1)] mb-2"
               >
                 ▶ Start Focus Timer
@@ -275,26 +392,26 @@ export default function HomeClient({ profile, templates, initialLogs, currentStr
 
               <div className="grid grid-cols-2 gap-3">
                 <button
-                  onClick={() => handleStatusUpdate(selectedLog.id, 'completed')}
-                  className={`py-3 font-semibold rounded-xl border ${selectedLog.status === 'completed' ? 'bg-status-completed text-black border-status-completed' : 'bg-status-completed-bg text-status-completed border-status-completed/30'}`}
+                  onClick={() => handleStatusUpdate(selectedTemplate.id, 'completed')}
+                  className={`py-3 font-semibold rounded-xl border ${getLogForTemplate(selectedTemplate.id)?.status === 'completed' ? 'bg-status-completed text-black border-status-completed' : 'bg-status-completed-bg text-status-completed border-status-completed/30'}`}
                 >
                   ✓ Complete
                 </button>
                 <button
-                  onClick={() => handleStatusUpdate(selectedLog.id, 'partial')}
-                  className={`py-3 font-semibold rounded-xl border ${selectedLog.status === 'partial' ? 'bg-status-partial text-black border-status-partial' : 'bg-status-partial-bg text-status-partial border-status-partial/30'}`}
+                  onClick={() => handleStatusUpdate(selectedTemplate.id, 'partial')}
+                  className={`py-3 font-semibold rounded-xl border ${getLogForTemplate(selectedTemplate.id)?.status === 'partial' ? 'bg-status-partial text-black border-status-partial' : 'bg-status-partial-bg text-status-partial border-status-partial/30'}`}
                 >
                   ◑ Partial
                 </button>
                 <button
-                  onClick={() => handleStatusUpdate(selectedLog.id, 'late')}
-                  className={`py-3 font-semibold rounded-xl border ${selectedLog.status === 'late' ? 'bg-status-late text-black border-status-late' : 'bg-status-late-bg text-status-late border-status-late/30'}`}
+                  onClick={() => handleStatusUpdate(selectedTemplate.id, 'late')}
+                  className={`py-3 font-semibold rounded-xl border ${getLogForTemplate(selectedTemplate.id)?.status === 'late' ? 'bg-status-late text-black border-status-late' : 'bg-status-late-bg text-status-late border-status-late/30'}`}
                 >
                   🕐 Late
                 </button>
                 <button
-                  onClick={() => handleStatusUpdate(selectedLog.id, 'missed')}
-                  className={`py-3 font-semibold rounded-xl border ${selectedLog.status === 'missed' ? 'bg-status-missed text-black border-status-missed' : 'bg-status-missed-bg text-status-missed border-status-missed/30'}`}
+                  onClick={() => handleStatusUpdate(selectedTemplate.id, 'missed')}
+                  className={`py-3 font-semibold rounded-xl border ${getLogForTemplate(selectedTemplate.id)?.status === 'missed' ? 'bg-status-missed text-black border-status-missed' : 'bg-status-missed-bg text-status-missed border-status-missed/30'}`}
                 >
                   ✕ Missed
                 </button>
