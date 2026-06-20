@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Bell, Clock, Database, Moon, Sun, Download, Loader2 } from 'lucide-react'
+import { Bell, Clock, Database as DatabaseIcon, Moon, Sun, Download, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import type { Database } from '@/lib/supabase/database.types'
@@ -192,7 +192,7 @@ export default function SettingsClient({
         {/* Data Export */}
         <section>
           <h2 className="text-sm font-bold text-muted uppercase tracking-wider mb-3 ml-1 flex items-center gap-2">
-            <Database size={16} /> Data Management
+            <DatabaseIcon size={16} /> Data Management
           </h2>
           <button 
             onClick={handleExport}
