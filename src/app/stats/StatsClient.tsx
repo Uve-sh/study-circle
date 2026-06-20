@@ -20,7 +20,7 @@ interface LogEntry {
   date: string
   status: string
   actual_minutes_completed: number | null
-  template_id: string
+  template_id: string | null
 }
 
 interface Props {
