@@ -140,6 +140,78 @@ export interface Database {
         }
         Relationships: []
       }
+      active_timers: {
+        Row: {
+          user_id: string
+          template_id: string | null
+          status: 'running' | 'paused'
+          start_time: string
+          last_paused_at: string | null
+          accumulated_seconds: number
+          mode: 'countdown' | 'stopwatch'
+          duration_minutes: number | null
+          updated_at: string
+        }
+        Insert: {
+          user_id: string
+          template_id?: string | null
+          status?: 'running' | 'paused'
+          start_time?: string
+          last_paused_at?: string | null
+          accumulated_seconds?: number
+          mode?: 'countdown' | 'stopwatch'
+          duration_minutes?: number | null
+          updated_at?: string
+        }
+        Update: {
+          user_id?: string
+          template_id?: string | null
+          status?: 'running' | 'paused'
+          start_time?: string
+          last_paused_at?: string | null
+          accumulated_seconds?: number
+          mode?: 'countdown' | 'stopwatch'
+          duration_minutes?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_settings: {
+        Row: {
+          user_id: string
+          default_focus_duration: number
+          default_break_duration: number
+          timer_behavior: string
+          notifications_enabled: boolean
+          study_reminders_enabled: boolean
+          theme: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          user_id: string
+          default_focus_duration?: number
+          default_break_duration?: number
+          timer_behavior?: string
+          notifications_enabled?: boolean
+          study_reminders_enabled?: boolean
+          theme?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          user_id?: string
+          default_focus_duration?: number
+          default_break_duration?: number
+          timer_behavior?: string
+          notifications_enabled?: boolean
+          study_reminders_enabled?: boolean
+          theme?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: {

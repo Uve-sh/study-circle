@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import BottomNavigation from "@/components/BottomNavigation";
+import FocusTimer from "@/components/FocusTimer";
+import { createClient } from "@/lib/supabase/server";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,11 +35,14 @@ export const metadata: Metadata = {
 };
 
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
   return (
     <html lang="en" className="dark">
       <body
@@ -47,6 +52,7 @@ export default function RootLayout({
           <main className="min-h-full pb-20">
             {children}
           </main>
+          <FocusTimer userId={user?.id ?? null} />
           <BottomNavigation />
         </div>
       </body>
